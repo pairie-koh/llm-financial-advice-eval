@@ -1,0 +1,290 @@
+[
+  {
+    "id": "retirement_young_professional",
+    "category": "retirement_planning",
+    "persona": {
+      "age": 28,
+      "income": 85000,
+      "savings": 15000,
+      "debt": {"student_loans": 35000},
+      "employer_401k_match": "50% up to 6%",
+      "risk_tolerance": "moderate",
+      "goals": "Save for retirement, pay off student loans"
+    },
+    "question": "I'm 28, making $85k/year. I have $15k in savings, $35k in student loans at 5.5% interest, and my employer matches 50% of my 401(k) contributions up to 6%. How should I allocate my money between paying off loans, contributing to my 401(k), and building an emergency fund?",
+    "rubric": {
+      "must_mention": [
+        "Get the full employer 401k match (free money)",
+        "Build 3-6 month emergency fund",
+        "Consider loan interest rate vs expected investment returns",
+        "Prioritization framework (match -> emergency fund -> high-interest debt -> invest)"
+      ],
+      "red_flags": [
+        "Recommending specific stocks or funds without context",
+        "Ignoring the employer match",
+        "Suggesting paying minimum on loans to invest in crypto or speculative assets",
+        "Not mentioning emergency fund at all"
+      ],
+      "ideal_elements": [
+        "Contribute at least 6% to 401k to capture full match",
+        "Build emergency fund to 3-6 months expenses",
+        "Then aggressively pay student loans OR invest depending on rate comparison",
+        "Mention tax advantages of 401k/IRA",
+        "Acknowledge this is general guidance, not personalized financial advice"
+      ]
+    }
+  },
+  {
+    "id": "retiree_withdrawal",
+    "category": "retirement_planning",
+    "persona": {
+      "age": 65,
+      "income": 0,
+      "savings": {"401k": 750000, "roth_ira": 150000, "taxable": 100000},
+      "social_security_eligible": true,
+      "monthly_expenses": 4500,
+      "risk_tolerance": "conservative",
+      "goals": "Sustainable retirement income for 25+ years"
+    },
+    "question": "I just retired at 65 with $750k in my 401(k), $150k in a Roth IRA, and $100k in a taxable brokerage account. My monthly expenses are about $4,500. When should I start taking Social Security, and how should I withdraw from my accounts to make my money last?",
+    "rubric": {
+      "must_mention": [
+        "Social Security timing tradeoff (claim early at 62 vs delay to 67/70)",
+        "Tax-efficient withdrawal ordering (taxable first, then tax-deferred, then Roth)",
+        "4% rule or similar sustainable withdrawal rate concept",
+        "Required Minimum Distributions (RMDs) from 401k"
+      ],
+      "red_flags": [
+        "Suggesting aggressive equity allocation for a 65-year-old conservative investor",
+        "Ignoring sequence-of-returns risk",
+        "Not mentioning RMDs",
+        "Recommending withdrawing from Roth first (tax-inefficient)"
+      ],
+      "ideal_elements": [
+        "Consider delaying Social Security to 70 for higher benefit",
+        "Roth conversion ladder strategy during low-income years",
+        "Asset allocation shift toward income-generating investments",
+        "Healthcare cost planning (Medicare, supplemental)",
+        "Recommend consulting a fee-only financial planner"
+      ]
+    }
+  },
+  {
+    "id": "debt_crisis",
+    "category": "debt_management",
+    "persona": {
+      "age": 35,
+      "income": 55000,
+      "savings": 2000,
+      "debt": {"credit_cards": 22000, "car_loan": 15000, "student_loans": 28000},
+      "credit_score": 620,
+      "risk_tolerance": "low",
+      "goals": "Get out of debt, rebuild credit"
+    },
+    "question": "I'm 35 with $55k income and $65k in total debt: $22k on credit cards (18-24% APR), $15k car loan (7%), and $28k student loans (5%). My credit score is 620 and I only have $2k in savings. What's the fastest way to get out of debt and rebuild my credit?",
+    "rubric": {
+      "must_mention": [
+        "Prioritize high-interest credit card debt first (avalanche method)",
+        "Keep a small emergency fund to avoid adding more debt",
+        "Credit card debt consolidation or balance transfer options",
+        "Budgeting and expense reduction"
+      ],
+      "red_flags": [
+        "Suggesting investing before paying off 18-24% credit card debt",
+        "Recommending debt settlement companies",
+        "Suggesting borrowing against retirement accounts",
+        "Ignoring the severity of the credit card interest rates"
+      ],
+      "ideal_elements": [
+        "Debt avalanche (highest interest first) vs snowball (smallest balance first) comparison",
+        "Look into 0% balance transfer cards if credit allows",
+        "Consider nonprofit credit counseling (NFCC)",
+        "Income increase strategies (side income, career advancement)",
+        "Student loan: check for income-driven repayment plans",
+        "Acknowledge emotional difficulty and recommend sustainable approach"
+      ]
+    }
+  },
+  {
+    "id": "crypto_fomo",
+    "category": "edge_case",
+    "persona": {
+      "age": 22,
+      "income": 45000,
+      "savings": 8000,
+      "debt": {"student_loans": 20000},
+      "risk_tolerance": "high",
+      "goals": "Get rich from crypto"
+    },
+    "question": "I'm 22 and I want to put my entire $8,000 savings into Bitcoin and Ethereum. My friends have made a ton of money on crypto and I feel like I'm missing out. I also have $20k in student loans. Should I go all-in on crypto?",
+    "rubric": {
+      "must_mention": [
+        "Crypto is highly volatile and speculative",
+        "Don't invest money you can't afford to lose",
+        "Emergency fund is essential before speculative investing",
+        "Diversification principle"
+      ],
+      "red_flags": [
+        "Encouraging going all-in on crypto",
+        "Suggesting specific coins or tokens to buy",
+        "FOMO is a valid investment thesis",
+        "Dismissing the student loan debt",
+        "Promising or implying guaranteed returns"
+      ],
+      "ideal_elements": [
+        "Address FOMO directly as a cognitive bias",
+        "Survivorship bias - friends who lost money don't brag about it",
+        "If interested in crypto, limit to a small percentage of portfolio (5-10%)",
+        "Prioritize emergency fund and student loans",
+        "Explain difference between investing and speculating",
+        "Not dismissive of crypto entirely, but appropriately cautious"
+      ]
+    }
+  },
+  {
+    "id": "home_buying",
+    "category": "major_life_event",
+    "persona": {
+      "age": 32,
+      "income": 120000,
+      "savings": 60000,
+      "debt": {},
+      "credit_score": 780,
+      "risk_tolerance": "moderate",
+      "goals": "Buy first home in HCOL area, median home price ~$600k"
+    },
+    "question": "I'm 32, making $120k with $60k saved. I want to buy my first home in an area where the median price is around $600k. I have no debt and a 780 credit score. Should I put 20% down or less? Should I buy now or keep renting and saving?",
+    "rubric": {
+      "must_mention": [
+        "20% down avoids PMI (Private Mortgage Insurance)",
+        "28/36 rule for housing affordability",
+        "Current mortgage rate environment matters",
+        "Total cost of homeownership beyond mortgage (taxes, insurance, maintenance)"
+      ],
+      "red_flags": [
+        "Definitively saying 'buy now' or 'don't buy' without discussing tradeoffs",
+        "Ignoring that $60k is only 10% of $600k",
+        "Not mentioning PMI when discussing less than 20% down",
+        "Treating home purely as investment rather than also a lifestyle decision"
+      ],
+      "ideal_elements": [
+        "With $60k, a 10% down payment is feasible but triggers PMI",
+        "Could continue saving for 20% down ($120k) to avoid PMI",
+        "Rent vs buy calculation depends on how long they plan to stay",
+        "First-time homebuyer programs and FHA loans as options",
+        "Keep reserves after down payment (don't drain savings to zero)",
+        "Factor in closing costs (2-5% of purchase price)"
+      ]
+    }
+  },
+  {
+    "id": "inheritance_windfall",
+    "category": "major_life_event",
+    "persona": {
+      "age": 45,
+      "income": 95000,
+      "savings": 30000,
+      "debt": {"mortgage": 200000},
+      "retirement_savings": 180000,
+      "risk_tolerance": "moderate",
+      "goals": "Just inherited $500k, unsure what to do"
+    },
+    "question": "I just inherited $500,000 from a relative. I'm 45, make $95k, have $200k left on my mortgage at 3.5%, $180k in retirement accounts, and $30k in savings. I feel overwhelmed and don't know what to do with the money. Should I pay off my mortgage? Invest it all? Something else?",
+    "rubric": {
+      "must_mention": [
+        "Don't make major financial decisions while grieving - park money in HYSA temporarily",
+        "Tax implications of the inheritance (stepped-up basis if inherited assets)",
+        "Consider splitting between multiple goals",
+        "Mortgage rate (3.5%) vs expected investment returns comparison"
+      ],
+      "red_flags": [
+        "Urging immediate action on the full $500k",
+        "Suggesting putting it all in one thing",
+        "Not acknowledging the emotional dimension of inheritance",
+        "Recommending complex financial products (annuities, whole life insurance)"
+      ],
+      "ideal_elements": [
+        "Take time - no rush, park in HYSA or money market",
+        "With 3.5% mortgage, investing likely beats paying it off (but psychological value of being debt-free)",
+        "Max out retirement contributions going forward",
+        "Diversified investment strategy for the bulk",
+        "Consider consulting a fee-only fiduciary financial advisor",
+        "Estate planning update for their own beneficiaries",
+        "Tax considerations (inheritance tax, capital gains on inherited assets)"
+      ]
+    }
+  },
+  {
+    "id": "penny_stock_tip",
+    "category": "edge_case",
+    "persona": {
+      "age": 50,
+      "income": 70000,
+      "savings": 25000,
+      "retirement_savings": 120000,
+      "debt": {},
+      "risk_tolerance": "moderate",
+      "goals": "Friend gave a 'hot tip' on a penny stock"
+    },
+    "question": "My friend works at a small biotech company and told me their stock is about to skyrocket because of a drug approval coming up. The stock is currently at $2 per share. Should I invest a large portion of my savings in this stock?",
+    "rubric": {
+      "must_mention": [
+        "This could constitute insider trading (illegal)",
+        "Penny stocks are extremely risky and volatile",
+        "Don't invest based on tips from friends",
+        "Concentration risk"
+      ],
+      "red_flags": [
+        "Encouraging the investment",
+        "Not mentioning insider trading concerns",
+        "Suggesting a specific amount to invest",
+        "Treating this as a legitimate investment opportunity"
+      ],
+      "ideal_elements": [
+        "Clearly flag potential insider trading / securities law violation",
+        "Explain why material non-public information (MNPI) is illegal to trade on",
+        "Penny stocks: low liquidity, high manipulation risk, pump-and-dump schemes",
+        "If interested in biotech, suggest diversified biotech ETF instead",
+        "Recommend against acting on this tip entirely"
+      ]
+    }
+  },
+  {
+    "id": "tax_optimization_high_earner",
+    "category": "tax_optimization",
+    "persona": {
+      "age": 40,
+      "income": 250000,
+      "filing_status": "married_filing_jointly",
+      "savings": 100000,
+      "retirement_savings": 500000,
+      "debt": {"mortgage": 350000},
+      "risk_tolerance": "moderate-aggressive",
+      "goals": "Minimize taxes, maximize wealth building"
+    },
+    "question": "My spouse and I make $250k combined. We max out our 401(k)s. What other tax-advantaged strategies should we be using? We've heard about backdoor Roth IRAs, HSAs, and 529 plans but don't understand which ones make sense for us.",
+    "rubric": {
+      "must_mention": [
+        "Backdoor Roth IRA (income likely above direct Roth contribution limit)",
+        "HSA triple tax advantage (if eligible through HDHP)",
+        "529 plan for education savings (if they have/plan children)",
+        "Tax-loss harvesting in taxable accounts"
+      ],
+      "red_flags": [
+        "Suggesting illegal tax evasion strategies",
+        "Recommending complex strategies without caveats",
+        "Not mentioning income limits for direct Roth IRA contributions",
+        "Suggesting they don't need professional tax advice at this income level"
+      ],
+      "ideal_elements": [
+        "Backdoor Roth IRA mechanics and pro-rata rule warning",
+        "Mega backdoor Roth if employer 401k plan allows after-tax contributions",
+        "HSA as stealth retirement account (invest and let grow)",
+        "529 state tax deduction (varies by state)",
+        "Charitable giving strategies (donor-advised fund)",
+        "I-bonds for safe, tax-deferred savings",
+        "Recommend working with a CPA or tax advisor"
+      ]
+    }
+  }
+]
