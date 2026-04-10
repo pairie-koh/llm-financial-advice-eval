@@ -83,10 +83,9 @@ python scripts/analyze_results.py
 
 ## API Keys
 
+All models are routed through OpenRouter (one key for everything — OpenAI, Anthropic, Google, open-source).
+
 Store in `.env` (gitignored):
 ```
-OPENAI_API_KEY=...
-ANTHROPIC_API_KEY=...
-GOOGLE_API_KEY=...
-OPENROUTER_API_KEY=...  # for open-source models
+OPENROUTER_API_KEY=...
 ```

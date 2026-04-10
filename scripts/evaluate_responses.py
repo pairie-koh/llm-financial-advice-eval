@@ -76,18 +76,25 @@ Respond in this exact JSON format:
 }"""
 
 
-def build_judge_prompt(scenario: dict, response_text: str) -> str:
-    persona_str = json.dumps(scenario["persona"], indent=2)
+def build_judge_prompt(scenario: dict, resp: dict) -> str:
     rubric_str = json.dumps(scenario["rubric"], indent=2)
 
-    return f"""## Persona
-{persona_str}
+    context_parts = []
+    if "persona" in scenario:
+        context_parts.append(f"## Persona\n{json.dumps(scenario['persona'], indent=2)}")
+    if "base_situation" in scenario:
+        context_parts.append(f"## Situation\n{scenario['base_situation']}")
+    context = "\n\n".join(context_parts)
+
+    question = resp.get("question", scenario.get("question", ""))
+
+    return f"""{context}
 
 ## Question Asked
-{scenario["question"]}
+{question}
 
 ## AI Response to Evaluate
-{response_text}
+{resp["text"]}
 
 ## Evaluation Rubric
 {rubric_str}
@@ -95,12 +102,23 @@ def build_judge_prompt(scenario: dict, response_text: str) -> str:
 Please evaluate the AI response according to the scoring criteria and rubric above. Return your evaluation as JSON."""
 
 
-def judge_with_openai(prompt: str) -> dict:
+JUDGE_MODELS = {
+    "gpt-4o": "openai/gpt-4o",
+    "claude-sonnet": "anthropic/claude-sonnet-4",
+    "gemini-2.5-pro": "google/gemini-2.5-pro-preview",
+}
+
+
+def judge_response(prompt: str, judge_model: str) -> dict:
     from openai import OpenAI
 
-    client = OpenAI()
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.environ.get("OPENROUTER_API_KEY"),
+    )
+    model_id = JUDGE_MODELS.get(judge_model, judge_model)
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model=model_id,
         messages=[
             {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
@@ -109,22 +127,8 @@ def judge_with_openai(prompt: str) -> dict:
         response_format={"type": "json_object"},
         max_tokens=2000,
     )
-    return json.loads(response.choices[0].message.content)
-
-
-def judge_with_anthropic(prompt: str) -> dict:
-    import anthropic
-
-    client = anthropic.Anthropic()
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        system=JUDGE_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
-        max_tokens=2000,
-    )
-    text = response.content[0].text
-    # Extract JSON from response
+    text = response.choices[0].message.content
+    # Extract JSON if wrapped in markdown code block
     if "```json" in text:
         text = text.split("```json")[1].split("```")[0]
     elif "```" in text:
@@ -136,16 +140,20 @@ def main():
     parser = argparse.ArgumentParser(description="Evaluate LLM financial advice responses")
     parser.add_argument("--responses", required=True, help="Path to responses JSON file")
     parser.add_argument("--scenarios", required=True, help="Path to scenarios JSON file")
-    parser.add_argument("--judge", default="openai", choices=["openai", "anthropic"], help="Which model to use as judge")
+    parser.add_argument("--judge", default="gpt-4o", help="Judge model key (gpt-4o, claude-sonnet, gemini-2.5-pro) or any OpenRouter model ID")
     parser.add_argument("--output", default="data/evaluations", help="Output directory")
     parser.add_argument("--sleep", type=float, default=1.0, help="Sleep between judge calls")
     args = parser.parse_args()
 
     responses = json.loads(Path(args.responses).read_text(encoding="utf-8"))
     scenarios = json.loads(Path(args.scenarios).read_text(encoding="utf-8"))
-    scenario_map = {s["id"]: s for s in scenarios}
 
-    judge_fn = judge_with_openai if args.judge == "openai" else judge_with_anthropic
+    # Handle both formats: list of scenarios or dict with "scenarios" key
+    if isinstance(scenarios, dict) and "scenarios" in scenarios:
+        scenario_list = scenarios["scenarios"]
+    else:
+        scenario_list = scenarios
+    scenario_map = {s["id"]: s for s in scenario_list}
 
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -161,10 +169,10 @@ def main():
 
         print(f"[{i + 1}/{len(valid_responses)}] Evaluating {resp['model_key']} x {resp['scenario_id']}")
 
-        prompt = build_judge_prompt(scenario, resp["text"])
+        prompt = build_judge_prompt(scenario, resp)
 
         try:
-            evaluation = judge_fn(prompt)
+            evaluation = judge_response(prompt, args.judge)
             evaluation["scenario_id"] = resp["scenario_id"]
             evaluation["model_key"] = resp["model_key"]
             evaluation["display_name"] = resp["display_name"]

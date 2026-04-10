@@ -35,150 +35,73 @@ SYSTEM_PROMPT = (
     "Answer their question as helpfully as you can."
 )
 
-# Model configurations: (provider, model_id, display_name)
+# All models routed through OpenRouter (one API key for everything)
 MODEL_REGISTRY = {
-    "gpt-4o": ("openai", "gpt-4o", "GPT-4o"),
-    "gpt-4o-mini": ("openai", "gpt-4o-mini", "GPT-4o Mini"),
-    "o3-mini": ("openai", "o3-mini", "o3-mini"),
-    "claude-sonnet": ("anthropic", "claude-sonnet-4-20250514", "Claude Sonnet 4"),
-    "claude-haiku": ("anthropic", "claude-haiku-4-20250414", "Claude Haiku 4"),
-    "gemini-2.0-flash": ("google", "gemini-2.0-flash", "Gemini 2.0 Flash"),
-    "gemini-2.5-pro": ("google", "gemini-2.5-pro-preview-05-06", "Gemini 2.5 Pro"),
-    # Open-source via OpenRouter
-    "llama-3.3-70b": ("openrouter", "meta-llama/llama-3.3-70b-instruct", "Llama 3.3 70B"),
-    "deepseek-v3": ("openrouter", "deepseek/deepseek-chat-v3-0324", "DeepSeek V3"),
-    "qwen-2.5-72b": ("openrouter", "qwen/qwen-2.5-72b-instruct", "Qwen 2.5 72B"),
+    # OpenAI
+    "gpt-4o": ("openai/gpt-4o", "GPT-4o"),
+    "gpt-4o-mini": ("openai/gpt-4o-mini", "GPT-4o Mini"),
+    "o3-mini": ("openai/o3-mini", "o3-mini"),
+    # Anthropic
+    "claude-sonnet": ("anthropic/claude-sonnet-4", "Claude Sonnet 4"),
+    "claude-haiku": ("anthropic/claude-haiku-4", "Claude Haiku 4"),
+    # Google
+    "gemini-2.0-flash": ("google/gemini-2.0-flash-001", "Gemini 2.0 Flash"),
+    "gemini-2.5-pro": ("google/gemini-2.5-pro-preview", "Gemini 2.5 Pro"),
+    # Open-source
+    "llama-3.3-70b": ("meta-llama/llama-3.3-70b-instruct", "Llama 3.3 70B"),
+    "deepseek-v3": ("deepseek/deepseek-chat-v3-0324", "DeepSeek V3"),
+    "qwen-2.5-72b": ("qwen/qwen-2.5-72b-instruct", "Qwen 2.5 72B"),
 }
 
 PROVIDER_GROUPS = {
-    "openai": [k for k, v in MODEL_REGISTRY.items() if v[0] == "openai"],
-    "anthropic": [k for k, v in MODEL_REGISTRY.items() if v[0] == "anthropic"],
-    "google": [k for k, v in MODEL_REGISTRY.items() if v[0] == "google"],
-    "openrouter": [k for k, v in MODEL_REGISTRY.items() if v[0] == "openrouter"],
+    "openai": [k for k in MODEL_REGISTRY if MODEL_REGISTRY[k][0].startswith("openai/")],
+    "anthropic": [k for k in MODEL_REGISTRY if MODEL_REGISTRY[k][0].startswith("anthropic/")],
+    "google": [k for k in MODEL_REGISTRY if MODEL_REGISTRY[k][0].startswith("google/")],
+    "opensource": [k for k in MODEL_REGISTRY if not any(MODEL_REGISTRY[k][0].startswith(p) for p in ("openai/", "anthropic/", "google/"))],
 }
 
 
-def query_openai(model_id: str, question: str) -> dict:
+def get_client():
     from openai import OpenAI
 
-    client = OpenAI()
-    start = time.time()
-    response = client.chat.completions.create(
-        model=model_id,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": question},
-        ],
-        temperature=0.7,
-        max_tokens=2000,
-    )
-    elapsed = time.time() - start
-    return {
-        "text": response.choices[0].message.content,
-        "usage": {
-            "input_tokens": response.usage.prompt_tokens,
-            "output_tokens": response.usage.completion_tokens,
-        },
-        "latency_seconds": round(elapsed, 2),
-    }
-
-
-def query_anthropic(model_id: str, question: str) -> dict:
-    import anthropic
-
-    client = anthropic.Anthropic()
-    start = time.time()
-    response = client.messages.create(
-        model=model_id,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": question}],
-        temperature=0.7,
-        max_tokens=2000,
-    )
-    elapsed = time.time() - start
-    return {
-        "text": response.content[0].text,
-        "usage": {
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-        },
-        "latency_seconds": round(elapsed, 2),
-    }
-
-
-def query_google(model_id: str, question: str) -> dict:
-    from google import genai
-
-    client = genai.Client()
-    start = time.time()
-    response = client.models.generate_content(
-        model=model_id,
-        contents=f"{SYSTEM_PROMPT}\n\n{question}",
-    )
-    elapsed = time.time() - start
-    return {
-        "text": response.text,
-        "usage": {
-            "input_tokens": getattr(response.usage_metadata, "prompt_token_count", None),
-            "output_tokens": getattr(response.usage_metadata, "candidates_token_count", None),
-        },
-        "latency_seconds": round(elapsed, 2),
-    }
-
-
-def query_openrouter(model_id: str, question: str) -> dict:
-    from openai import OpenAI
-
-    client = OpenAI(
+    return OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=os.environ.get("OPENROUTER_API_KEY"),
     )
-    start = time.time()
-    response = client.chat.completions.create(
-        model=model_id,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": question},
-        ],
-        temperature=0.7,
-        max_tokens=2000,
-    )
-    elapsed = time.time() - start
-    return {
-        "text": response.choices[0].message.content,
-        "usage": {
-            "input_tokens": getattr(response.usage, "prompt_tokens", None),
-            "output_tokens": getattr(response.usage, "completion_tokens", None),
-        },
-        "latency_seconds": round(elapsed, 2),
-    }
-
-
-QUERY_FNS = {
-    "openai": query_openai,
-    "anthropic": query_anthropic,
-    "google": query_google,
-    "openrouter": query_openrouter,
-}
 
 
 def query_model(model_key: str, question: str) -> dict:
-    provider, model_id, display_name = MODEL_REGISTRY[model_key]
-    query_fn = QUERY_FNS[provider]
+    model_id, display_name = MODEL_REGISTRY[model_key]
     try:
-        result = query_fn(model_id, question)
-        result["model_key"] = model_key
-        result["model_id"] = model_id
-        result["display_name"] = display_name
-        result["provider"] = provider
-        result["error"] = None
-        return result
+        client = get_client()
+        start = time.time()
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": question},
+            ],
+            temperature=0.7,
+            max_tokens=2000,
+        )
+        elapsed = time.time() - start
+        return {
+            "text": response.choices[0].message.content,
+            "usage": {
+                "input_tokens": getattr(response.usage, "prompt_tokens", None),
+                "output_tokens": getattr(response.usage, "completion_tokens", None),
+            },
+            "latency_seconds": round(elapsed, 2),
+            "model_key": model_key,
+            "model_id": model_id,
+            "display_name": display_name,
+            "error": None,
+        }
     except Exception as e:
         return {
             "model_key": model_key,
             "model_id": model_id,
             "display_name": display_name,
-            "provider": provider,
             "text": None,
             "usage": None,
             "latency_seconds": None,

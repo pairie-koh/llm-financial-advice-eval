@@ -18,14 +18,14 @@ As AI-powered financial advisors proliferate — many operating outside traditio
 ```bash
 pip install -r requirements.txt
 
-# Set API keys in .env
-cp .env.example .env  # then fill in your keys
+# Set your OpenRouter API key (routes to all models with one key)
+echo "OPENROUTER_API_KEY=sk-or-..." > .env
 
 # Query models (start with a subset)
-python scripts/query_llms.py --scenarios data/scenarios/pilot_scenarios.json --models openai
+python scripts/query_llms.py --scenarios data/scenarios/prompt_variations.json --models gpt-4o,claude-sonnet
 
 # Evaluate responses
-python scripts/evaluate_responses.py --responses data/responses/responses_*.json --scenarios data/scenarios/pilot_scenarios.json
+python scripts/evaluate_responses.py --responses data/responses/responses_*.json --scenarios data/scenarios/prompt_variations.json
 
 # Analyze results
 python scripts/analyze_results.py --evaluations data/evaluations/evaluations_*.json
