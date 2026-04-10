@@ -1,10 +1,22 @@
 """
 Query multiple LLMs with financial advice scenarios and collect responses.
 
+Supports two scenario formats:
+  1. Simple: each scenario has a single "question" field
+  2. Prompt variations: each scenario has a "prompts" dict with named variations
+
 Usage:
+    # Simple scenarios
     python scripts/query_llms.py --scenarios data/scenarios/pilot_scenarios.json --models all
-    python scripts/query_llms.py --scenarios data/scenarios/pilot_scenarios.json --models openai,anthropic
-    python scripts/query_llms.py --scenarios data/scenarios/pilot_scenarios.json --models openai --runs 3
+
+    # Prompt variations (tests how framing affects advice)
+    python scripts/query_llms.py --scenarios data/scenarios/prompt_variations.json --models all
+
+    # Subset of models, multiple runs for consistency
+    python scripts/query_llms.py --scenarios data/scenarios/prompt_variations.json --models openai,anthropic --runs 3
+
+    # Filter to specific prompt variation axes
+    python scripts/query_llms.py --scenarios data/scenarios/prompt_variations.json --models gpt-4o --filter-sophistication naive,sophisticated
 """
 
 import argparse
@@ -189,6 +201,65 @@ def resolve_models(model_arg: str) -> list[str]:
     return models
 
 
+def expand_scenarios(raw_data, filters=None):
+    """Expand scenarios into a flat list of prompt items.
+
+    Handles both formats:
+      - Simple: list of dicts with "question" field
+      - Prompt variations: dict with "scenarios" containing "prompts" sub-dicts
+    """
+    items = []
+
+    if isinstance(raw_data, dict) and "scenarios" in raw_data:
+        for scenario in raw_data["scenarios"]:
+            for prompt_key, prompt_info in scenario["prompts"].items():
+                if filters:
+                    skip = False
+                    for axis, allowed in filters.items():
+                        if prompt_info.get(axis) not in allowed:
+                            skip = True
+                            break
+                    if skip:
+                        continue
+                items.append({
+                    "scenario_id": scenario["id"],
+                    "category": scenario["category"],
+                    "prompt_key": prompt_key,
+                    "question": prompt_info["text"],
+                    "sophistication": prompt_info.get("sophistication"),
+                    "emotional_state": prompt_info.get("emotional_state"),
+                    "pressure": prompt_info.get("pressure"),
+                    "context_level": prompt_info.get("context"),
+                    "rubric": scenario.get("rubric"),
+                })
+    else:
+        for scenario in raw_data:
+            items.append({
+                "scenario_id": scenario["id"],
+                "category": scenario["category"],
+                "prompt_key": "default",
+                "question": scenario["question"],
+                "sophistication": None,
+                "emotional_state": None,
+                "pressure": None,
+                "context_level": None,
+                "rubric": scenario.get("rubric"),
+            })
+
+    return items
+
+
+def parse_filters(args):
+    filters = {}
+    if args.filter_sophistication:
+        filters["sophistication"] = set(args.filter_sophistication.split(","))
+    if args.filter_emotional:
+        filters["emotional_state"] = set(args.filter_emotional.split(","))
+    if args.filter_pressure:
+        filters["pressure"] = set(args.filter_pressure.split(","))
+    return filters if filters else None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Query LLMs with financial advice scenarios")
     parser.add_argument("--scenarios", required=True, help="Path to scenarios JSON file")
@@ -196,9 +267,14 @@ def main():
     parser.add_argument("--output", default="data/responses", help="Output directory for responses")
     parser.add_argument("--runs", type=int, default=1, help="Number of runs per scenario per model (for consistency testing)")
     parser.add_argument("--sleep", type=float, default=1.0, help="Sleep between API calls (seconds)")
+    parser.add_argument("--filter-sophistication", default=None, help="Filter by sophistication (e.g., naive,sophisticated)")
+    parser.add_argument("--filter-emotional", default=None, help="Filter by emotional state (e.g., neutral,anxious)")
+    parser.add_argument("--filter-pressure", default=None, help="Filter by pressure type (e.g., open_ended,adversarial)")
     args = parser.parse_args()
 
-    scenarios = json.loads(Path(args.scenarios).read_text(encoding="utf-8"))
+    raw_data = json.loads(Path(args.scenarios).read_text(encoding="utf-8"))
+    filters = parse_filters(args)
+    items = expand_scenarios(raw_data, filters)
     models = resolve_models(args.models)
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -206,19 +282,26 @@ def main():
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     all_responses = []
 
-    total = len(scenarios) * len(models) * args.runs
+    total = len(items) * len(models) * args.runs
+    print(f"Running {total} queries: {len(items)} prompts x {len(models)} models x {args.runs} runs\n")
     done = 0
 
-    for scenario in scenarios:
+    for item in items:
         for model_key in models:
             for run_idx in range(args.runs):
                 done += 1
-                print(f"[{done}/{total}] {scenario['id']} x {model_key} (run {run_idx + 1})")
+                label = f"{item['scenario_id']}/{item['prompt_key']}"
+                print(f"[{done}/{total}] {label} x {model_key} (run {run_idx + 1})")
 
-                result = query_model(model_key, scenario["question"])
-                result["scenario_id"] = scenario["id"]
-                result["category"] = scenario["category"]
-                result["question"] = scenario["question"]
+                result = query_model(model_key, item["question"])
+                result["scenario_id"] = item["scenario_id"]
+                result["category"] = item["category"]
+                result["prompt_key"] = item["prompt_key"]
+                result["question"] = item["question"]
+                result["sophistication"] = item["sophistication"]
+                result["emotional_state"] = item["emotional_state"]
+                result["pressure"] = item["pressure"]
+                result["context_level"] = item["context_level"]
                 result["run_index"] = run_idx
                 result["timestamp"] = datetime.now(timezone.utc).isoformat()
 
@@ -239,6 +322,15 @@ def main():
     # Summary
     errors = sum(1 for r in all_responses if r["error"])
     print(f"Success: {len(all_responses) - errors}, Errors: {errors}")
+
+    if any(r.get("sophistication") for r in all_responses):
+        print("\nPrompts by sophistication level:")
+        by_soph = {}
+        for r in all_responses:
+            s = r.get("sophistication", "unknown")
+            by_soph[s] = by_soph.get(s, 0) + 1
+        for k, v in sorted(by_soph.items()):
+            print(f"  {k}: {v}")
 
 
 if __name__ == "__main__":
