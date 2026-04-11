@@ -70,43 +70,50 @@ def get_client():
     )
 
 
-def query_model(model_key: str, question: str) -> dict:
+def query_model(model_key: str, question: str, max_retries: int = 3) -> dict:
     model_id, display_name = MODEL_REGISTRY[model_key]
-    try:
-        client = get_client()
-        start = time.time()
-        response = client.chat.completions.create(
-            model=model_id,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": question},
-            ],
-            temperature=0.7,
-            max_tokens=2000,
-        )
-        elapsed = time.time() - start
-        return {
-            "text": response.choices[0].message.content,
-            "usage": {
-                "input_tokens": getattr(response.usage, "prompt_tokens", None),
-                "output_tokens": getattr(response.usage, "completion_tokens", None),
-            },
-            "latency_seconds": round(elapsed, 2),
-            "model_key": model_key,
-            "model_id": model_id,
-            "display_name": display_name,
-            "error": None,
-        }
-    except Exception as e:
-        return {
-            "model_key": model_key,
-            "model_id": model_id,
-            "display_name": display_name,
-            "text": None,
-            "usage": None,
-            "latency_seconds": None,
-            "error": str(e),
-        }
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            client = get_client()
+            start = time.time()
+            response = client.chat.completions.create(
+                model=model_id,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": question},
+                ],
+                temperature=0.7,
+                max_tokens=2000,
+            )
+            elapsed = time.time() - start
+            return {
+                "text": response.choices[0].message.content,
+                "usage": {
+                    "input_tokens": getattr(response.usage, "prompt_tokens", None),
+                    "output_tokens": getattr(response.usage, "completion_tokens", None),
+                },
+                "latency_seconds": round(elapsed, 2),
+                "model_key": model_key,
+                "model_id": model_id,
+                "display_name": display_name,
+                "error": None,
+            }
+        except Exception as e:
+            last_error = str(e)
+            if attempt < max_retries - 1:
+                backoff = 2 ** attempt * 3  # 3s, 6s, 12s
+                print(f"  Retry {attempt + 1}/{max_retries} after {backoff}s: {last_error[:80]}")
+                time.sleep(backoff)
+    return {
+        "model_key": model_key,
+        "model_id": model_id,
+        "display_name": display_name,
+        "text": None,
+        "usage": None,
+        "latency_seconds": None,
+        "error": last_error,
+    }
 
 
 def resolve_models(model_arg: str) -> list[str]:
@@ -183,6 +190,36 @@ def parse_filters(args):
     return filters if filters else None
 
 
+def response_key(scenario_id: str, prompt_key: str, model_key: str, run_idx: int) -> str:
+    return f"{scenario_id}|{prompt_key}|{model_key}|{run_idx}"
+
+
+def load_existing_responses(path: Path):
+    """Return (all_responses_list, completed_keys_set) for resumption."""
+    if not path.exists():
+        return [], set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return [], set()
+    completed = set()
+    for r in data:
+        if r.get("text") and not r.get("error"):
+            completed.add(response_key(
+                r["scenario_id"],
+                r.get("prompt_key", "default"),
+                r["model_key"],
+                r.get("run_index", 0),
+            ))
+    return data, completed
+
+
+def save_responses_atomic(path: Path, responses: list):
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(responses, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp_path.replace(path)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Query LLMs with financial advice scenarios")
     parser.add_argument("--scenarios", required=True, help="Path to scenarios JSON file")
@@ -193,27 +230,48 @@ def main():
     parser.add_argument("--filter-sophistication", default=None, help="Filter by sophistication (e.g., naive,sophisticated)")
     parser.add_argument("--filter-emotional", default=None, help="Filter by emotional state (e.g., neutral,anxious)")
     parser.add_argument("--filter-pressure", default=None, help="Filter by pressure type (e.g., open_ended,adversarial)")
+    parser.add_argument("--output-file", default=None, help="Explicit output file path (overrides default stable naming)")
     args = parser.parse_args()
 
-    raw_data = json.loads(Path(args.scenarios).read_text(encoding="utf-8"))
+    scenarios_path = Path(args.scenarios)
+    raw_data = json.loads(scenarios_path.read_text(encoding="utf-8"))
     filters = parse_filters(args)
     items = expand_scenarios(raw_data, filters)
     models = resolve_models(args.models)
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    all_responses = []
+    # Stable output filename so re-runs can resume
+    if args.output_file:
+        out_path = Path(args.output_file)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        out_path = output_dir / f"responses_{scenarios_path.stem}.json"
+
+    all_responses, completed_keys = load_existing_responses(out_path)
+    # Drop any previous error entries so they get retried
+    all_responses = [r for r in all_responses if r.get("text") and not r.get("error")]
 
     total = len(items) * len(models) * args.runs
-    print(f"Running {total} queries: {len(items)} prompts x {len(models)} models x {args.runs} runs\n")
+    print(f"Running {total} queries: {len(items)} prompts x {len(models)} models x {args.runs} runs")
+    if completed_keys:
+        print(f"Resuming: {len(completed_keys)} already completed, {total - len(completed_keys)} remaining")
+    print(f"Output: {out_path}\n")
     done = 0
+    new_successes = 0
+    new_errors = 0
 
     for item in items:
         for model_key in models:
             for run_idx in range(args.runs):
                 done += 1
+                key = response_key(item["scenario_id"], item["prompt_key"], model_key, run_idx)
                 label = f"{item['scenario_id']}/{item['prompt_key']}"
+
+                if key in completed_keys:
+                    print(f"[{done}/{total}] {label} x {model_key} (run {run_idx + 1}) -- SKIP (cached)")
+                    continue
+
                 print(f"[{done}/{total}] {label} x {model_key} (run {run_idx + 1})")
 
                 result = query_model(model_key, item["question"])
@@ -228,23 +286,27 @@ def main():
                 result["run_index"] = run_idx
                 result["timestamp"] = datetime.now(timezone.utc).isoformat()
 
-                all_responses.append(result)
-
                 if result["error"]:
                     print(f"  ERROR: {result['error']}")
+                    new_errors += 1
                 else:
                     word_count = len(result["text"].split())
                     print(f"  OK: {word_count} words, {result['latency_seconds']}s")
+                    all_responses.append(result)
+                    completed_keys.add(key)
+                    new_successes += 1
+                    # Incremental atomic save after each success
+                    save_responses_atomic(out_path, all_responses)
 
                 time.sleep(args.sleep)
 
-    out_path = output_dir / f"responses_{timestamp}.json"
-    out_path.write_text(json.dumps(all_responses, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Final save (no-op if nothing new, but safe)
+    save_responses_atomic(out_path, all_responses)
     print(f"\nSaved {len(all_responses)} responses to {out_path}")
+    print(f"New successes this run: {new_successes}, new errors: {new_errors}")
 
     # Summary
-    errors = sum(1 for r in all_responses if r["error"])
-    print(f"Success: {len(all_responses) - errors}, Errors: {errors}")
+    print(f"Total cached successes: {len(all_responses)}")
 
     if any(r.get("sophistication") for r in all_responses):
         print("\nPrompts by sophistication level:")

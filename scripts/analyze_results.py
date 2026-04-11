@@ -26,10 +26,14 @@ def build_dataframe(evaluations: list[dict]) -> pd.DataFrame:
             continue
 
         row = {
-            "model": ev["display_name"],
+            "model": ev.get("display_name", ev.get("model_key")),
             "model_key": ev["model_key"],
-            "provider": ev["provider"],
             "scenario": ev["scenario_id"],
+            "prompt_key": ev.get("prompt_key", "default"),
+            "category": ev.get("category"),
+            "sophistication": ev.get("sophistication"),
+            "emotional_state": ev.get("emotional_state"),
+            "pressure": ev.get("pressure"),
             "run_index": ev.get("run_index", 0),
             "aggregate": ev["aggregate_score"],
         }
@@ -45,6 +49,30 @@ def build_dataframe(evaluations: list[dict]) -> pd.DataFrame:
         rows.append(row)
 
     return pd.DataFrame(rows)
+
+
+def print_variation_breakdown(df: pd.DataFrame):
+    """Core equity analysis: how does advice quality vary by prompt framing?"""
+    if df["sophistication"].isna().all():
+        return
+
+    print("\n" + "=" * 90)
+    print("PROMPT VARIATION EFFECTS (the equity angle)")
+    print("=" * 90)
+
+    for axis in ["sophistication", "emotional_state", "pressure"]:
+        if df[axis].isna().all():
+            continue
+        print(f"\n--- By {axis} ---")
+        tab = df.groupby([axis])["aggregate"].agg(["mean", "std", "count"]).round(2)
+        print(tab.to_string())
+
+    print("\n--- Per-model score drop by sophistication (naive vs sophisticated) ---")
+    if not df["sophistication"].isna().all():
+        piv = df.groupby(["model", "sophistication"])["aggregate"].mean().unstack()
+        if "naive" in piv.columns and "sophisticated" in piv.columns:
+            piv["delta (soph - naive)"] = (piv["sophisticated"] - piv["naive"]).round(2)
+            print(piv.round(2).to_string())
 
 
 def print_model_rankings(df: pd.DataFrame):
@@ -108,14 +136,16 @@ def print_scenario_breakdown(df: pd.DataFrame):
         )
 
 
-def print_worst_performers(df: pd.DataFrame, n: int = 5):
+def print_worst_performers(df: pd.DataFrame, n: int = 10):
     print(f"\n{'=' * 90}")
-    print(f"WORST {n} MODEL-SCENARIO COMBINATIONS")
+    print(f"WORST {n} MODEL x PROMPT COMBINATIONS")
     print("=" * 90)
 
-    worst = df.nsmallest(n, "aggregate")[["model", "scenario", "aggregate", "red_flags_count"]]
+    cols = ["model", "scenario", "prompt_key", "aggregate", "red_flags_count"]
+    worst = df.nsmallest(n, "aggregate")[cols]
     for _, row in worst.iterrows():
-        print(f"  {row['model']:<25} x {row['scenario']:<30} score={row['aggregate']:.1f} red_flags={int(row['red_flags_count'])}")
+        label = f"{row['scenario']}/{row['prompt_key']}"
+        print(f"  {row['model']:<25} x {label:<45} score={row['aggregate']:.1f} red_flags={int(row['red_flags_count'])}")
 
 
 def main():
@@ -136,6 +166,7 @@ def main():
     print_model_rankings(df)
     print_dimension_breakdown(df)
     print_scenario_breakdown(df)
+    print_variation_breakdown(df)
     print_worst_performers(df)
 
     if args.output_csv:

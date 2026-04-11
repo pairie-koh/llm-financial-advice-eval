@@ -136,6 +136,37 @@ def judge_response(prompt: str, judge_model: str) -> dict:
     return json.loads(text)
 
 
+def eval_key(scenario_id, prompt_key, model_key, run_idx):
+    return f"{scenario_id}|{prompt_key}|{model_key}|{run_idx}"
+
+
+def load_existing_evaluations(path: Path):
+    if not path.exists():
+        return [], set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return [], set()
+    completed = set()
+    valid = []
+    for ev in data:
+        if ev.get("aggregate_score") is not None and not ev.get("error"):
+            completed.add(eval_key(
+                ev["scenario_id"],
+                ev.get("prompt_key", "default"),
+                ev["model_key"],
+                ev.get("run_index", 0),
+            ))
+            valid.append(ev)
+    return valid, completed
+
+
+def save_evals_atomic(path: Path, evals: list):
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(evals, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp_path.replace(path)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Evaluate LLM financial advice responses")
     parser.add_argument("--responses", required=True, help="Path to responses JSON file")
@@ -143,9 +174,11 @@ def main():
     parser.add_argument("--judge", default="gpt-4o", help="Judge model key (gpt-4o, claude-sonnet, gemini-2.5-pro) or any OpenRouter model ID")
     parser.add_argument("--output", default="data/evaluations", help="Output directory")
     parser.add_argument("--sleep", type=float, default=1.0, help="Sleep between judge calls")
+    parser.add_argument("--output-file", default=None, help="Explicit output file for stable resume")
     args = parser.parse_args()
 
-    responses = json.loads(Path(args.responses).read_text(encoding="utf-8"))
+    responses_path = Path(args.responses)
+    responses = json.loads(responses_path.read_text(encoding="utf-8"))
     scenarios = json.loads(Path(args.scenarios).read_text(encoding="utf-8"))
 
     # Handle both formats: list of scenarios or dict with "scenarios" key
@@ -158,52 +191,78 @@ def main():
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    evaluations = []
+    if args.output_file:
+        out_path = Path(args.output_file)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        out_path = output_dir / f"evaluations_{responses_path.stem.replace('responses_', '')}_{args.judge}.json"
+
+    evaluations, completed_keys = load_existing_evaluations(out_path)
+
     valid_responses = [r for r in responses if r.get("text") and not r.get("error")]
+    total = len(valid_responses)
+    print(f"Evaluating {total} responses with judge={args.judge}")
+    if completed_keys:
+        print(f"Resuming: {len(completed_keys)} already judged, {total - len(completed_keys)} remaining")
+    print(f"Output: {out_path}\n")
+
+    new_ok = 0
+    new_err = 0
 
     for i, resp in enumerate(valid_responses):
         scenario = scenario_map.get(resp["scenario_id"])
         if not scenario:
-            print(f"  Skipping {resp['scenario_id']}: no matching scenario")
+            print(f"[{i + 1}/{total}] Skipping {resp['scenario_id']}: no matching scenario")
             continue
 
-        print(f"[{i + 1}/{len(valid_responses)}] Evaluating {resp['model_key']} x {resp['scenario_id']}")
+        key = eval_key(
+            resp["scenario_id"],
+            resp.get("prompt_key", "default"),
+            resp["model_key"],
+            resp.get("run_index", 0),
+        )
+        if key in completed_keys:
+            print(f"[{i + 1}/{total}] SKIP (cached) {resp['model_key']} x {resp['scenario_id']}/{resp.get('prompt_key','default')}")
+            continue
+
+        print(f"[{i + 1}/{total}] Judging {resp['model_key']} x {resp['scenario_id']}/{resp.get('prompt_key','default')}")
 
         prompt = build_judge_prompt(scenario, resp)
 
         try:
             evaluation = judge_response(prompt, args.judge)
             evaluation["scenario_id"] = resp["scenario_id"]
+            evaluation["prompt_key"] = resp.get("prompt_key", "default")
             evaluation["model_key"] = resp["model_key"]
-            evaluation["display_name"] = resp["display_name"]
-            evaluation["provider"] = resp["provider"]
+            evaluation["display_name"] = resp.get("display_name", resp["model_key"])
+            evaluation["sophistication"] = resp.get("sophistication")
+            evaluation["emotional_state"] = resp.get("emotional_state")
+            evaluation["pressure"] = resp.get("pressure")
+            evaluation["category"] = resp.get("category")
             evaluation["run_index"] = resp.get("run_index", 0)
             evaluation["judge_model"] = args.judge
             evaluation["timestamp"] = datetime.now(timezone.utc).isoformat()
             evaluation["error"] = None
 
-            # Compute aggregate score
             dimensions = ["accuracy", "suitability", "completeness", "harm_avoidance", "disclosure", "actionability"]
             scores = [evaluation[d]["score"] for d in dimensions if isinstance(evaluation.get(d), dict)]
             evaluation["aggregate_score"] = round(sum(scores) / len(scores), 2) if scores else None
 
             evaluations.append(evaluation)
+            completed_keys.add(key)
+            new_ok += 1
+            save_evals_atomic(out_path, evaluations)
 
             print(f"  Aggregate: {evaluation['aggregate_score']}/5.0")
         except Exception as e:
             print(f"  ERROR: {e}")
-            evaluations.append({
-                "scenario_id": resp["scenario_id"],
-                "model_key": resp["model_key"],
-                "error": str(e),
-            })
+            new_err += 1
 
         time.sleep(args.sleep)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    out_path = output_dir / f"evaluations_{timestamp}.json"
-    out_path.write_text(json.dumps(evaluations, indent=2, ensure_ascii=False), encoding="utf-8")
+    save_evals_atomic(out_path, evaluations)
     print(f"\nSaved {len(evaluations)} evaluations to {out_path}")
+    print(f"New this run: {new_ok} ok, {new_err} errors")
 
     # Print summary table
     print("\n" + "=" * 80)
